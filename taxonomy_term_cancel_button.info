@@ -1,0 +1,5 @@
+name = Taxonomy Term Cancel Button
+description = Adds Cancel button to taxonomy term form.
+package = User interface
+core = 7.x
+

@@ -1,0 +1,262 @@
+<?php
+
+/**
+ * Implements hook_menu()
+ */
+function taxonomy_term_cancel_button_menu(){
+  return array(
+    'admin/config/user-interface/taxonomy-cancel' => array(
+      'title' => 'Taxonomy Term Cancel Button',
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('taxonomy_term_cancel_button_settings'),
+      'access arguments' => array('administer contents'),
+    ),
+  );
+}
+
+/**
+ * taxonomy_term_cancel_button_settings
+ */
+
+function taxonomy_term_cancel_button_settings($form, &$form_state) {
+  $taxonomy_type = array();
+  $default_set = array();
+  $button_label = 'Cancel';
+  $action = 'front';
+
+  if (!empty(taxonomy_term_cancel_button_settings_get('taxonomy'))) {
+   $taxonomy_type = taxonomy_term_cancel_button_settings_get('taxonomy');
+   $default_vocabularies = $taxonomy_type['taxonomy_cancel'];
+
+   foreach($default_vocabularies as $key => $value)
+   {
+    $default_set[$key] = $value;
+   }
+   $action = $taxonomy_type['action'];
+  }
+
+  $button_label = 'Cancel';
+  if($taxonomy_type['label'] != '')
+  {
+    $button_label = $taxonomy_type['label'];
+  }
+
+  $get_vocabularies = taxonomy_get_vocabularies();
+  $vocabularies = array();
+  foreach($get_vocabularies as $voc) {
+    $vocabularies[$voc->machine_name] = $voc->name;
+  }
+
+  $form['taxonomy_cancel'] = array(
+    '#type' => 'checkboxes',
+    '#title' => t('Vocabularies'),
+    '#description' => t('Enable cancel button for checked vocabularies'),
+    '#options' => $vocabularies,
+    '#default_value' => $default_set,
+  );
+  $form['label'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Label'),
+    '#description' => t('Provide label text for Cancel button'),
+    '#default_value' => $button_label,
+  );
+  $form['action'] = array(
+    '#type' => 'select',
+    '#title' => t('Action on cancel'),
+    '#description' => t('Provide action to be taken on clicking cancel button'),
+    '#options' => taxonomy_term_cancel_button_action_options(),
+    '#default_value' => $action,
+  );
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Save'),
+  );
+
+  return $form;
+}
+
+/**
+ * Callback for cancel button settings submit.
+ */
+function taxonomy_term_cancel_button_settings_submit($form, $form_state) {
+
+  // Clear settings before save.
+  taxonomy_term_cancel_button_settings_del();
+
+  // Exclude unnecessary elements.
+  form_state_values_clean($form_state);
+  foreach ($form_state['values'] as $key => $value) {
+
+    if (is_array($value) && isset($form_state['values']['array_filter'])) {
+     $value = array_keys(array_filter($value));
+    }
+
+    taxonomy_term_cancel_button_settings_set($key, $value);
+  }
+
+  drupal_set_message(t('Cancel button settings have been saved.'));
+}
+
+/**
+ * Provides options for form action on cancel.
+ */
+function taxonomy_term_cancel_button_action_options() {
+ return  array(
+    'front' => 'Redirect to front page',
+    'vocabulary_listing' => 'Redirect to vocabulary listing page',
+  );
+}
+
+/**
+ * Get settings for cancel button.
+ *
+ * @param string $name
+ *   (optional) setting name.
+ */
+function taxonomy_term_cancel_button_settings_get($name = NULL) {
+
+  $settings = variable_get('taxonomy_term_cancel_button_settings');
+  if(!isset($settings[$name])) {
+    return $settings;
+  }
+
+  return $settings[$name];
+}
+
+/**
+ * Set settings for cancel button.
+ *
+ * @param string $name
+ *   setting name.
+ * @param (mixed) $value
+ *   setting value.
+ */
+function taxonomy_term_cancel_button_settings_set($name, $value) {
+  $settings = variable_get('taxonomy_term_cancel_button_settings');
+
+  $settings[$name] = $value;
+
+  variable_set('taxonomy_term_cancel_button_settings', $settings);
+}
+
+/**
+ * Delete setting from cancel button.
+ * @param string $name
+ * (optional) setting name. If not set removes all the settings.
+ */
+function taxonomy_term_cancel_button_settings_del($name = NULL) {
+
+  if(!$name) {
+    variable_del('taxonomy_term_cancel_button_settings');
+    return;
+  }
+
+  $settings = variable_get('taxonomy_term_cancel_button_settings');
+
+  unset($settings[$name]);
+
+  variable_set('taxonomy_term_cancel_button_settings', $settings);
+}
+
+/**
+ * Checks is taxonomy form needs cancel button.
+ *
+ * @param string $form_id
+ *   Form id.
+ * @param array $form
+ *   Form array.
+ * @return boolean
+ *   TRUE is form needs cancel button.
+ */
+function taxonomy_term_cancel_buttom_needed($form_id, $form) {
+  if (taxonomy_term_cancel_button_needed_for_taxonomy_form($form_id, $form)) {
+    return TRUE;
+  }
+}
+
+/**
+ * Checks is taxonomy form needs cancel button.
+  * @param string $form_id
+ *   Form id.
+ * @param array $form
+ *   Form array.
+  * @return boolean
+ *   TRUE is form needs cancel button.
+ */
+function taxonomy_term_cancel_button_needed_for_taxonomy_form($form_id, $form) {
+  $taxonomy_type = '';
+  if (isset($form['#vocabulary']->machine_name)) {
+    $taxonomy_type = $form['#vocabulary']->machine_name;
+  }
+
+  if (!$taxonomy_type) {
+    return FALSE;
+  }
+  $settings = taxonomy_term_cancel_button_settings_get('taxonomy');
+  if (($settings['taxonomy_cancel'][$taxonomy_type] == '$taxonomy_type')) {
+    return FALSE;
+  }
+  else {
+    return TRUE;
+  }
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function taxonomy_term_cancel_button_form_alter(&$form, &$form_state, $form_id) {
+  if (taxonomy_term_cancel_buttom_needed($form_id, $form)) {
+    taxonomy_term_cancel_button_add_to_form($form, $form_state);
+  }
+}
+
+/**
+ * Adds cancel button to the form
+ * @param array $form
+ *   Form array.
+ * @param array $form_state
+ *   Form state array.
+ */
+function taxonomy_term_cancel_button_add_to_form(&$form, &$form_state) {
+  // Show cancel button on add and edit page only
+  if (arg(4) == 'add' || (arg(0) == 'taxonomy' && arg(1) == 'term' && is_numeric(arg(2)))) {
+    $taxonomy_type = taxonomy_term_cancel_button_settings_get('taxonomy');
+    $button_label = 'Cancel';
+    if($taxonomy_type['label'] != '')
+    {
+      $button_label = $taxonomy_type['label'];
+    }
+
+    $form['actions']['cancel_button'] = array(
+      '#type' => 'submit',
+      '#value' => $button_label,
+      '#weight' => 99,
+      '#validate' => array('taxonomy_term_cancel_button_validate'),
+      '#limit_validation_errors' => array(),
+    );
+  }
+}
+
+/**
+ * The "Cancel" action.
+ * Handle different submit actions and make different redirects.
+ * @param array $form
+ *   Form array.
+ * @param array $form_state
+ *   Form state array.
+ */
+function taxonomy_term_cancel_button_validate($form, &$form_state) {
+  // Hide the error messages.
+  drupal_get_messages('error');
+
+  $settings = taxonomy_term_cancel_button_settings_get('taxonomy');
+  $redirect = $settings['action'];
+  if($redirect == 'front') {
+    $go_to = '<front>';
+  }
+  else {
+    $go_to = 'admin/structure/taxonomy';
+  }
+  // redirect
+  drupal_goto($go_to);
+}
